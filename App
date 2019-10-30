@@ -1,1 +1,283 @@
-python app
+import getpass
+import time
+import paramiko
+import os
+import sys
+
+
+
+global dic
+dic = {
+    "Firewall 1":"IP ADDRESS 1,
+    "Firewall 2":"IP ADDRESS 2",
+    "Firewall 3":"IP ADDRESS 3"
+    }
+
+# a lambda function to clear the terminal
+clear = lambda: os.system("cls")
+
+def menu():
+    """
+    This function prints out the Menu, informing the user for the available options
+    :return:
+    """
+    clear()
+    print("\n*********** Menu ************\n")
+    print("The following options are about configuring a password for DLP in every ELS Palo Alto Firewall\n")
+    print("Press 1 to add a new password")
+    print("Press 2 to change an existing password")
+    print("Press Ctrl + C to quit \n")
+    global answer
+    answer = input("Answer: ")
+
+
+def AdminUser():
+    """
+    This function asks the admin user (At the point of writing a member of the Network Engineer team) to provide his
+    credentials for the SSH connection
+    :return: Returns Username and Password for the SSH connection
+    """
+    clear()
+    print("\n*** Only the Administrator to give his credentials ***\n"
+          "\nYou can press CTRL + C in any time to go back\n")
+    time.sleep(2)
+    global adminUser
+    global adminPass
+    adminUser = input("Username: ")
+    adminPass = getpass.getpass(prompt='Password: ', stream=None)
+    print("\n")
+    time.sleep(1)
+
+def InfoSec():
+    """
+    This function asks the user to input a new password for the DLP and verify it.
+    :return: Will return a new password to be configured
+    """
+    clear()
+    print("\n*** Only the InfoSec to give credentials ***\n")
+    time.sleep(2)
+    global bureaucratUser, bureaucratPass
+
+    while True:
+        print("\nThe password length must be greater than 6 characters\n")
+        bureaucratPass = getpass.getpass(prompt='Give Password: ', stream=None)
+        bureaucratPass2 = getpass.getpass(prompt='Verify Password: ', stream=None)
+        if bureaucratPass != bureaucratPass2:
+            print("\n********** Passwords do not match. Please, try again! **********\n")
+            time.sleep(2)
+            # If the passwords do not match, then skip everything else into the loop and run the loop from scratch
+            continue
+        else:
+            print("success\n")
+            time.sleep(1)
+            break
+
+
+def InfoSecChangePassword():
+    """
+    This function asks the user to input a new password for the DLP and verify it. The user will be asked to give the
+    old password as well
+    :return: Returns the New password to be configured and the Old password which is configured
+    """
+    clear()
+    print("\n*** Only the InfoSec to give credentials ***\n")
+    time.sleep(2)
+    global bureaucratOld, bureaucratNew
+    # The loop will be true until the user inputs passwords that match
+    while True:
+        bureaucratNew = getpass.getpass(prompt='Give New Password: ', stream=None)
+        bureaucratNew2 = getpass.getpass(prompt='Verify New Password: ', stream=None)
+        if bureaucratNew != bureaucratNew2:
+            print("\n********** Passwords do not match. Please, try again! **********\n")
+            time.sleep(2)
+            # If the passwords do not match, then skip everything else into the loop and run the loop from scratch
+            continue
+        else:
+            print("success\n")
+            bureaucratOld = getpass.getpass(prompt='Give Old Password: ', stream=None)
+            time.sleep(1)
+            break
+
+
+def main():
+    # The App will run until the users quit it.
+    try:
+        f=open(os.path.join(sys.path[0], "georgios.txt"), "w+")
+        f.write("sucseed")
+        f.close()
+    except:
+        print("failed to create the file")
+
+    while True:
+        # The menu is displayed
+        menu()
+        print("\n")
+        # The user chooses to set a new password
+        if answer == '1':
+            # the app asks the admin users to give credentials
+            try:
+                AdminUser()
+            except KeyboardInterrupt:
+                continue
+            except:
+                "Unexpected error, I am shutting down the application. please report it to the administrator"
+                time.sleep(10)
+
+            global adminUser, adminPass
+            # print the admin's credentials, only for debugging use
+            # print(adminUser,adminPass)
+            # asks the second user to give the password to be configured for DLP
+            try:
+                InfoSec()
+            except KeyboardInterrupt:
+                continue
+            except:
+                "Unexpected error, I am shutting down the application. please report it to the administrator"
+                time.sleep(10)
+
+            global bureaucratPass
+            # prints the password for debugging purposes only
+            print(bureaucratPass)
+            # Informs the users that the configuration state begins
+            clear()
+            print("Configuring the firewalls")
+            
+            # define session
+            #SESSION = paramiko.SSHClient()
+            # Read every Hostname-IP address in the dictionary
+            for ip in dic.keys():
+                SESSION = paramiko.SSHClient()
+                try:
+                    print("\n*******************************************\n Trying to SSH to: ", ip)
+                    # for i in dic.keys():
+                    #     print(dic[i])
+                    # define session
+                    SESSION.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                    # connection parameters
+                    SESSION.connect(dic[ip], port=22, username=adminUser, password=adminPass, look_for_keys=False,allow_agent=False)
+                    # open interactive shell
+                    DEVICE_ACCESS = SESSION.invoke_shell()
+                    print('\nThe following device will be configured ' + ip+" ?")
+                    g = input("Are you sure? Press Enter to continue. Otherwise, Press CTRL + C to abort")
+
+                    DEVICE_ACCESS.send(
+                        'request data-filtering access-password create password Spassword\n'.replace("Spassword",
+                                                                                                     bureaucratPass))
+
+                    # how long for script to run in seconds
+                    time.sleep(4)
+
+                    # how many bytes we can receive (max is 65000)
+                    output = DEVICE_ACCESS.recv(65000)
+                    s = str(output)
+                    print(output.decode('ascii'))
+                    print(s)
+                    SESSION.close()
+                    try:
+                        f = open(os.path.join(sys.path[0], "georgios.txt"), "a")
+                        f.write(s)
+                        f.write("\n\n\n\n" + ip + "\n\n\n\n")
+                        f.flush()
+                        f.close()
+
+                    except:
+                        print("failed to ammend the file")
+                except:
+                    print(" \nSSH connection to xxx is shuting down\n".replace("xxx", ip))
+                    # close session
+                    SESSION.close()
+                    del SESSION
+                    time.sleep(1)
+
+        elif answer == '2':
+            # the app asks the admin users to give credentials
+            try:
+                AdminUser()
+            except KeyboardInterrupt:
+                continue
+            except:
+                "Unexpected error, I am shutting down the application. please report it to the administrator"
+                time.sleep(10)
+            # prints admin's credentials for debugging only
+            print(adminUser, adminPass)
+            # asks the second user to give the new password to be configured for DLP as well as the old password
+            try:
+                InfoSecChangePassword()
+            except KeyboardInterrupt:
+                continue
+            except:
+                "Unexpected error, I am shutting down the application. please report it to the administrator"
+                time.sleep(10)
+
+            clear()
+            print("Configuring the firewalls")
+            for ip in dic.keys():
+                # define session
+                SESSION = paramiko.SSHClient()
+                try:
+                    print("\n*******************************************\n Trying to SSH to: ", ip)
+                    # define session
+                    SESSION.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                    # connection parameters
+                    SESSION.connect(dic[ip], port=22, username=adminUser, password=adminPass, look_for_keys=False,
+                                    allow_agent=False)
+                    # open interactive shell
+                    DEVICE_ACCESS = SESSION.invoke_shell()
+                    print('\nThe following device will be configured ' + ip + ' ?')
+                    g = input("Are you sure? Press Enter to continue. Otherwise, Press CTRL + C to abort")
+                    DEVICE_ACCESS.send(
+                        "request data-filtering access-password modify new-password Snew-password old-password $password\n".replace(
+                            "Snew-password", bureaucratNew).replace("$password", bureaucratOld))
+
+                    # how long for script to run in seconds
+                    time.sleep(4)
+
+                    # how many bytes we can receive (max is 65000)
+                    output = DEVICE_ACCESS.recv(65000)
+                    s = str(output)
+                    print(output.decode('ascii'))
+                    print(s)
+                    SESSION.close()
+                except:
+                    print(" \nSSH connection to xxx is shuting down\n".replace("xxx", ip))
+                    # close session
+                    SESSION.close()
+                    del SESSION
+                    time.sleep(1)
+
+        else:
+            print("\n*** Not supported button. Please, try again ***\n")
+            time.sleep(2)
+
+
+
+def banner():
+    print("                                 _ _ _ _ _ _ _ _ _ _ _ _")
+    print("                                |                      |")
+    print("  _ _ _ _ _ _ _ _ _ _           |                      |")
+    print("|                    |           - - - - - - - - - -   |")
+    print("|     _ _ _ _ _ _ _ _|                            /    /")
+    print("|    |                                          /    /")
+    print("|    |                                         /    /")
+    print("|    |                                       /   /")
+    print("|    |                                      /   /")
+    print("|    |                                    /   /")
+    print("|    |                                   /   /")
+    print("|    |           _ _ _ _ _ _           /   /")
+    print("|    |          |            |        /   /")
+    print("|    |          |_ _      _ _|      /   /")
+    print("|    |              |    |         /   /")
+    print("|    |              |    |       /   /")
+    print("|    |              |    |      /   /")
+    print("|    | _ _ _ _ _ _ _|    |      |   - - - - - - - - - -|")
+    print("|                        |      |_ _ _ _ _ _ _ _ _ _ _ | Productions")
+    print("|_ _ _ _ _ _ _ _ _ _ _ _ |      ")
+    print("\nThe purpose of this application is to configure multiple Elsevier firewalls. "
+          "If you are not authorized of using this programme. \nQuit now by pressing CTRL + C \nOtherwise, continue by pressing ENTER\n")
+    m = input("")
+
+
+if __name__ == '__main__':
+    banner()
+    print("\n")
+    main()
